@@ -88,4 +88,4 @@ Ejemplo de payload
         "userId": 2
     }
 }
-```
+```ci: trigger develop Wed Oct 29 11:04:10 -05 2025
