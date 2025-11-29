@@ -3,9 +3,12 @@ package com.selimhorri.app.service.impl;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import javax.persistence.EntityNotFoundException;
+import javax.annotation.PostConstruct;
 import javax.transaction.Transactional;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.DistributionSummary;
 import org.springframework.stereotype.Service;
 
 import com.selimhorri.app.domain.Order;
@@ -29,6 +32,26 @@ public class OrderServiceImpl implements OrderService {
 
         private final OrderRepository orderRepository;
         private final CartRepository cartRepository;
+        private final MeterRegistry meterRegistry;
+
+        private Counter ordersCreatedCounter;
+        private DistributionSummary orderValueSummary;
+
+        @PostConstruct
+        public void initMetric(){
+            this.ordersCreatedCounter = Counter
+                    .builder("orders_created_total")
+                    .description("Órdenes creadas exitosamente")
+                    .tag("service", "order")
+                    .register(meterRegistry);
+
+            this.orderValueSummary = DistributionSummary
+                    .builder("order_value_usd")
+                    .description("Distribución del valor de las órdenes")
+                    .baseUnit("usd")
+                    .publishPercentileHistogram()
+                    .register(meterRegistry);
+        }
 
         @Override
         public List<OrderDto> findAll() {
@@ -69,8 +92,10 @@ public class OrderServiceImpl implements OrderService {
                                 });
 
                 // Proceed with saving if validations pass
-                return OrderMappingHelper.map(
-                                this.orderRepository.save(OrderMappingHelper.mapForCreationOrder(orderDto)));
+                Order order = this.orderRepository.save(OrderMappingHelper.mapForCreationOrder(orderDto));
+                ordersCreatedCounter.increment();
+                orderValueSummary.record(order.getOrderFee());
+                return OrderMappingHelper.map(order);
         }
 
         @Override
