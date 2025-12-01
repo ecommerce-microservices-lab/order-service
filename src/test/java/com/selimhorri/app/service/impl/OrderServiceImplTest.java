@@ -13,9 +13,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 
 import com.selimhorri.app.domain.Cart;
 import com.selimhorri.app.domain.Order;
@@ -37,7 +38,8 @@ class OrderServiceImplTest {
 	@Mock
 	private CartRepository cartRepository;
 
-	@InjectMocks
+	private SimpleMeterRegistry meterRegistry;
+
 	private OrderServiceImpl orderService;
 
 	private Order order;
@@ -47,6 +49,15 @@ class OrderServiceImplTest {
 
 	@BeforeEach
 	void setUp() {
+		// Use SimpleMeterRegistry for tests - it's a real implementation but in-memory
+		meterRegistry = new SimpleMeterRegistry();
+		
+		// Create the service manually to inject the meterRegistry
+		orderService = new OrderServiceImpl(orderRepository, cartRepository, meterRegistry);
+		
+		// Trigger @PostConstruct manually
+		orderService.initMetric();
+
 		cart = Cart.builder()
 				.cartId(1)
 				.userId(1)
@@ -129,7 +140,12 @@ class OrderServiceImplTest {
 		orderDto.setOrderId(null);
 		orderDto.setOrderStatus(null);
 		when(cartRepository.findById(cartDto.getCartId())).thenReturn(Optional.of(cart));
-		when(orderRepository.save(any(Order.class))).thenReturn(order);
+		when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
+			Order savedOrder = invocation.getArgument(0);
+			// Ensure the cart is properly set with the full cart object
+			savedOrder.setCart(cart);
+			return savedOrder;
+		});
 
 		// When
 		OrderDto result = orderService.save(orderDto);
